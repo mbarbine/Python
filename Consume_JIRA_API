@@ -1,0 +1,206 @@
+# jira_downloader.py
+
+import requests
+import ceODBC
+
+def enterIssueData(resp, issuesFile, proj):
+    '''grab data from each issue for each header and write to file.
+    variable 'proj' is only used under line #Project '''
+    
+    for i in resp['issues']:
+        if i['fields']['status']['name'] != 'Duplicate':
+            
+            # Key, ID, IssueType, Status
+            line = "%s, %s, %s, %s" % (
+                i['key'], \
+                i['id'], \
+                i['fields']['issuetype']['name'], \
+                i['fields']['status']['name'])
+            
+            # Project
+            line += ", %s" % proj
+
+            # Epic Link
+            if i['fields']['customfield_12901']:
+                link = '' + \
+                 i['fields']['customfield_12901']
+                line += ", %s" % (link)
+            else:
+                line += ", "            
+
+            # Assignee
+            if i['fields']['assignee'] != None:
+                line += ", %s" % (i['fields']['assignee']['name'])
+            else:
+                line += ", "            
+            
+            # Assigned QA Eng
+            if i['fields']['customfield_10915']: 
+                line += ", %s" % (i['fields']['customfield_10915']['name'])
+            else:
+                line += ", "            
+
+            # Priority
+            if 'priority' in i['fields'] and i['fields']['priority']:
+                line += ", %s" % (i['fields']['priority']['name'])
+            else:
+                line += ", "            
+                
+            # New Feature Priority
+            if i['fields']['customfield_13702']: 
+                line += ", %s" % (i['fields']['customfield_13702']['value'])
+            else:
+                line += ", "            
+                
+            # Target Version    
+            if i['fields']['customfield_10301']: 
+                line += ", %s" % (i['fields']['customfield_10301']['name']) 
+            else:
+                line += ", "            
+                
+            # Requested Version
+            if i['fields']['customfield_13001']:
+                line += ", %s" % (i['fields']['customfield_13001']['name'])
+            else:
+                line += ", "            
+                
+            # Resolution
+            if i['fields']['resolution']: 
+                line += ", %s" % (i['fields']['resolution']['name'])
+            else:
+                line += ", "            
+                
+            # Updated
+            if i['fields']['updated']:
+                line += ", %s %s" % (i['fields']['updated'][:10], \
+                                     i['fields']['updated'][11:19])
+            else: 
+                line += ", "
+                
+            # Due
+            if i['fields']['duedate']:
+                line += ", %s" % (i['fields']['duedate'])
+            else:
+                line += ", "       
+                
+            # Created
+            if i['fields']['created']:
+                line += ", %s %s" % (i['fields']['created'][:10], \
+                                     i['fields']['created'][11:19])
+            else: 
+                line += ", "            
+            
+            # Sprint
+            if i['fields']['customfield_10727']:
+                for s in i['fields']['customfield_10727']:
+                    sprints = s.split(',')
+                line += ", %s" % (sprints[2][5:])
+            else:
+                line += ", "            
+                
+            # Linked Issue Key and ID
+            if len(i['fields']['issuelinks']) > 0:
+                links = ''
+                for l in i['fields']['issuelinks']:
+                    if 'inwardIssue' in l:
+                        links += '(%s %s)' % (l['inwardIssue']['key'], l['inwardIssue']['id'])                                           
+                    if 'outwardIssue' in l:
+                        links += '(%s %s)' % (l['outwardIssue']['key'], l['outwardIssue']['id']) 
+                line += ", %s" % (links)
+            else:
+                line += ", "            
+                
+            # Summary
+            summary = i['fields']['summary']
+            if summary != None:
+                # Strip unknown characters
+                summaryClean = ""
+                allowed = ' `-=~!@#$%^&*()_+[]\{}|;\':",./<>?'
+                for char in summary:
+                    if char.isalnum() or char in allowed:
+                        summaryClean += char
+                line += ", %s" % (summaryClean)
+            else:
+                line += ", "            
+             
+            print line   
+            line += "\n"
+            issuesFile.write(line)
+            
+################################################################################
+
+def getIssues(user, passw, proj):
+    '''retrieves json data for issues in a specified project via JIRA REST api 
+    using JIRA credentials and writes to txt file'''
+
+    # Write to new file (overwrites if file is pre-existing)
+    if proj == 'HXEP':
+        issuesFile = open('JIRA1.txt', 'w')
+    elif proj == 'AGT':
+        issuesFile = open('JIRA2.txt', 'w')
+    
+    # Initial query and response 
+    maxResults = 100
+    startAtIssue = 0 
+    print "\nPage %d: starts at issue %d" % ((startAtIssue/50 + 1), startAtIssue)    
+    query = "" % (proj, str(maxResults), str(startAtIssue))
+    resp = requests.get(query, auth=(user, passw)).json()
+    totalIssues = int(resp['total'])
+
+    # List of data taken from each issue, in order as written to file
+    headers = "Key, ID, Issue Type, Status, Project, Epic Link, " + \
+        "Assignee, Assigned QA Eng, Priority, New Feature Priority, " + \
+        "Target Version, Requested Version, Resolution, Updated, Due, " + \
+        "Created, Sprint, Linked Issues Key and ID, Summary\n"
+    issuesFile.write(headers)
+    
+    # Pull requested data from each issue and write to file
+    enterIssueData(resp, issuesFile, proj)
+    
+    # for multiple pages of results (cap = 50 results per page)
+    while totalIssues - startAtIssue >= maxResults:
+        try:
+            # Query and response
+            startAtIssue += maxResults
+            print "\nPage %d: starts at issue %d" % ((startAtIssue/50 + 1), startAtIssue)
+            query = "" % (proj, str(maxResults), str(startAtIssue))
+            resp = requests.get(query, auth=(user, passw)).json()
+
+            # Pull requested data from each issue and write to file        
+            enterIssueData(resp, issuesFile, proj)
+            
+        # KeyError: 'issues' may result because JIRA can't handle large 
+        # quearies. Reduce maxResults and retry query.
+        except KeyError, e:
+            if maxResults > 10:
+                maxResults -= 10
+            else:
+                maxResults -= 1
+            print "KeyError: " + e 
+            print "This script assumes KeyError is 'issues'. \
+            JIRA can't handle large quearies. Reduced maxResults to %i. \
+            \nTrying again..." % maxResults
+
+    print "End"    
+    issuesFile.close()   
+
+################################################################################
+
+# *** MAIN ***
+
+'''
+See docstring under getIssues function for more details on this file's purpose.
+
+To change JIRA credentials, edit user/passw variables below.
+
+To add another project, call the getIssues function in the format used below 
+with the project key then add another 'elif' to the if/else statement at the 
+beginning of the getIssues function, following the same format. Note that 
+changes must also be made on the SQL Server for the new project data file to 
+become a table.
+'''
+
+user = ""
+passw = "" 
+getIssues(user, passw, '')
+getIssues(user, passw, '')
