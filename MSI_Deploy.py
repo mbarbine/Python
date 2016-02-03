@@ -1,13 +1,13 @@
-import subprocess, sys, getopt, time, datetime, XenAPI
+import subprocess, sys, getopt, time, datetime, XenAPI, multithread
 
 def main(argv):
-    strListFile = "vmList.txt"
-    strLogFile = "deploy.log"
-    strWinUser = 
-    strWinPassword = 
+    strListFile = "targets_list_seperated_by_IP_by_Line.txt"
+    strLogFile = "/path/to/log/filename.log"
+    strWinUser = "%COMPUTERNAME%/username" or "domain/username"
+    strWinPassword = "super_secret" 
     strBinaryType = 
-    strOS = "Vista_and_Above"
-    strInstallMode = "Install_Only"
+    strOS = "Vista_and_Above" or "XP" 
+    strInstallMode = "Install_Only" or "install_and_uninstall" or "uninstall_only" 
     installSuccessList = []
     installFailList = []
     installArgs = ""
@@ -16,7 +16,7 @@ def main(argv):
     def usage():
         print "Usage:"
         print
-        print "install_only.py -i <vmlistfile> -o <logfile> -a <silent install arguments> -u <true | false to uninstall old agent>"
+        print "install_only.py -i <vmlistfile> -o <logfile> -a <silent install arguments> -u <true | false to uninstall>"
         print
         print "-h or --help"
         print
